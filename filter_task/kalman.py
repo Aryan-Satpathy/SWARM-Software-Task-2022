@@ -2,7 +2,7 @@
 Edit only predict function (Line number 24)
 '''
 
-SIM_WIN_NAME = 'Kalman Filter Sim'
+SIM_WIN_NAME = 'Multilateration Sim'
 
 TxBuffer = []
 RxBuffer = []
