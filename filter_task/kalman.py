@@ -1,8 +1,5 @@
 '''
-We make 3 station points sending signals.
-How do we simulate?
-We can use a continuous function
-
+Edit only predict function (Line number 24)
 '''
 
 SIM_WIN_NAME = 'Kalman Filter Sim'
@@ -21,6 +18,25 @@ coordinate = typing.Tuple[float]
 
 v_wave = 200
 
+class SignalsNotReady(Exception) :
+    pass
+
+def predict(station_pos : typing.List[coordinate], station_dis : typing.List[float]) -> coordinate :
+    '''
+    Implement this function. Return a coordinate.
+    station_pos : List of coordinates of stations.
+    station_dis : List of distances of bot from stations.
+    Raise error when not implemented or when None in distances. Wait till all distances have a value.
+    Do not use any other variables than what is provided in function arguments.
+    Implement your filter and predict coordinate of bot
+    '''
+
+    if None in station_dis : 
+        raise SignalsNotReady("Signals haven't reached yet. Wait for it")
+    else : 
+        # Your code goes here
+        raise NotImplementedError
+
 class coordinate(tuple) : 
     def __add__(self, other) : 
         assert type(other) == coordinate
@@ -31,9 +47,19 @@ class coordinate(tuple) :
         result = coordinate([self[i] - other[i] for i in range(len(self))])
         return result
     def __mul__(self, other) : 
-        assert type(other) == float
+        try : 
+            assert type(other) == float
+        except : 
+            print(type(other))
+            exit()
         result = coordinate([self[i] * other for i in range(len(self))])
         return result
+    def __truediv__(self, other) : 
+        assert type(other) in [int, float]
+        if other == 0 : 
+            print('div by 0')
+            exit()
+        return self * (1 / other)
     def mag(self) -> float : 
         return math.sqrt(sum([x * x for x in self]))
 
@@ -110,11 +136,13 @@ class Bot :
         self.prediction_trail = [Trail(self.predicted)]
     def move(self, velocity : coordinate) : 
         t = time.time()
+        diff = t - self.last_update if not (self.last_update == -1) else 1 / self.frequency
         if t - self.last_update > 1 / self.frequency :
             self.last_update = t
         else : 
             return
-        self.pos += velocity * (1 / self.frequency)
+        
+        self.pos += velocity * diff 
         self.trail = [Trail(self.pos, 5)] + self.trail
     def gps(self) : 
         self.reciever.recieve()
@@ -122,32 +150,41 @@ class Bot :
         self.predict()
         self.prediction_trail = [Trail(self.predicted)] + self.prediction_trail
     def predict(self) : 
+        try : 
+            predict([station.pos for station in Station.stations], self.distances)
+        except (NotImplementedError, SignalsNotReady) :
+            '''
+            Placeholder prediction function
+            '''
+            count = 0
+            for i in range(len(Station.stations)) : 
+                station_ids = rnd.sample(range(len(Station.stations)), 3)
+                
+                s1, s2, s3 = Station.stations[station_ids[0]], Station.stations[station_ids[1]], Station.stations[station_ids[2]]
+                '''
+                Eq1 : 2(x1 - x2)x + 2(y1 - y2)y + x2^2 - x1^2 + y2^2 - y1^2 + d1^2 - d2^2
+                Eq2 : 2(x2 - x3)x + 2(y2 - y3)y + x3^2 - x2^2 + y3^2 - y2^2 + d2^2 - d3^2
+                '''
 
-        station_ids = rnd.sample([0, 1, 2, 3], 3)
-        station_ids = [0, 1, 2]
+                if None in self.distances : 
+                    continue
 
-        s1, s2, s3 = Station.stations[station_ids[0]], Station.stations[station_ids[1]], Station.stations[station_ids[2]]
-        '''
-        Eq1 : 2(x1 - x2)x + 2(y1 - y2)y + x2^2 - x1^2 + y2^2 - y1^2 + d1^2 - d2^2
-        Eq2 : 2(x2 - x3)x + 2(y2 - y3)y + x3^2 - x2^2 + y3^2 - y2^2 + d2^2 - d3^2
-        '''
+                a1 = 2 * (s1.pos[0] - s2.pos[0])
+                b1 = 2 * (s1.pos[1] - s2.pos[1])
+                c1 = (s2.pos[0] ** 2 - s1.pos[0] ** 2) + (s2.pos[1] ** 2 - s1.pos[1] ** 2) + (self.distances[station_ids[0]] ** 2 - self.distances[station_ids[1]] ** 2)
 
-        if None in self.distances : 
-            return
+                a2 = 2 * (s2.pos[0] - s3.pos[0])
+                b2 = 2 * (s2.pos[1] - s3.pos[1])
+                c2 = (s3.pos[0] ** 2 - s2.pos[0] ** 2) + (s3.pos[1] ** 2 - s2.pos[1] ** 2) + (self.distances[station_ids[1]] ** 2 - self.distances[station_ids[2]] ** 2)
 
-        a1 = 2 * (s1.pos[0] - s2.pos[0])
-        b1 = 2 * (s1.pos[1] - s2.pos[1])
-        c1 = (s2.pos[0] ** 2 - s1.pos[0] ** 2) + (s2.pos[1] ** 2 - s1.pos[1] ** 2) + (self.distances[station_ids[0]] ** 2 - self.distances[station_ids[1]] ** 2)
+                A = np.array([[a1, b1], [a2, b2]])
+                B = np.array([-c1, -c2])
 
-        a2 = 2 * (s2.pos[0] - s3.pos[0])
-        b2 = 2 * (s2.pos[1] - s3.pos[1])
-        c2 = (s3.pos[0] ** 2 - s2.pos[0] ** 2) + (s3.pos[1] ** 2 - s2.pos[1] ** 2) + (self.distances[station_ids[1]] ** 2 - self.distances[station_ids[2]] ** 2)
+                x = np.linalg.solve(A, B)
+                self.predicted = self.predicted * float(count) + coordinate(x)
+                count += 1
+                self.predicted = self.predicted * (1 / count)
 
-        A = np.array([[a1, b1], [a2, b2]])
-        B = np.array([-c1, -c2])
-
-        x = np.linalg.solve(A, B)
-        self.predicted = coordinate(x)
 def transmit(bot : Bot) :
     t = time.time() 
     for data in TxBuffer : 
@@ -159,13 +196,16 @@ def transmit(bot : Bot) :
 def main() : 
 
     grid = coordinate([1000, 500])
-    max_vel = coordinate([15, 15])
 
-    num_stations = 4
+    num_stations = 6
     for i in range(num_stations) : 
         Station(coordinate([rnd.random() * grid[0], rnd.random() * grid[1]]), 600)
 
-    bot = Bot(coordinate([rnd.random() * grid[0] / 2 +  grid[0] / 2, rnd.random() * grid[1] / 2 +  grid[1] / 2]), 20)
+    center = grid / 2.0
+    omega = 2 * math.pi / 6
+    R = 175
+    
+    bot = Bot(coordinate(center + coordinate([0, R])), 20)
 
     for station in Station.stations : 
         station.initialize()
@@ -174,9 +214,6 @@ def main() :
 
     key = 0
 
-    velocities = [coordinate([x, y]) for x in [-max_vel[0], 0, max_vel[0]] for y in [-max_vel[1], 0, max_vel[1]]]
-    id_x = rnd.choice(range(len(velocities)))
-
     while (key & 0xff) not in [27, 81, 113]: 
 
         for station in Station.stations : 
@@ -184,11 +221,20 @@ def main() :
 
         transmit(bot)
 
-        # velocity = coordinate([2 * (rnd.random() - 0.5) * max_vel[0], 2 * (rnd.random() - 0.5) * max_vel[1]])
-        if rnd.random() > 0.9 : 
-            id_x = rnd.choice(range(len(velocities)))
-        
-        velocity = velocities[id_x]
+        pos = bot.pos
+        t = time.time()
+        del_t_1 = t - bot.last_update
+        # del_t_2 = 1 / bot.frequency
+        theta = omega * del_t_1 / 2
+        v = 2 * R * math.sin(theta) / del_t_1
+        r = pos - center
+        r_cap = r / r.mag()
+        r_per = coordinate([r_cap[1], -r_cap[0]])
+        r_per = r_per / r_per.mag()
+        v_cap = r_cap * math.sin(-theta) + r_per * math.cos(theta)
+        v_cap = v_cap / v_cap.mag()
+        velocity = v_cap * v
+
         bot.move(velocity)
 
         bot.gps()
@@ -230,7 +276,6 @@ class Canvas :
         for station in self.stations : 
             pos = coordinate(map(int, station.pos))
             cv2.rectangle(self.base, (pos - coordinate([3, 3])), (pos + coordinate([3, 3])), Canvas.station_color, -1)
-            # cv2.rectangle(self.base, (pos - coordinate([3, 3]))[ : : -1], (pos + coordinate([3, 3]))[ : : -1], Canvas.station_color, -1)
     def update(self) : 
         
         t = time.time()
@@ -249,7 +294,6 @@ class Canvas :
         for j in range(len(self.trails)) :
             predicted_trail = self.predicted_trails[j] 
             deleted = 0
-            # print(len(trail))
             predicted_trail[0].lifetime -= (t - self.last_update)
             for i in range(1, len(predicted_trail)) :
                 i -= deleted
@@ -258,12 +302,6 @@ class Canvas :
                 pos = coordinate(map(int, particle.pos))
                 _pos = coordinate(map(int, predicted_trail[i-1].pos))
                 cv2.line(_img, _pos, pos, Canvas.prediction_trail_color, 1)
-                # cv2.line(_img, _pos[ : : -1], pos[ : : -1], Canvas.trail_color, 1, cv2.LINE_AA)
-                # cv2.circle(_img, pos, 1, Canvas.trail_color, -1)
-                # cv2.imshow('debuug', self.img[min(_pos[0], pos[0]) : max(_pos[0], pos[0]) + 1, min(_pos[1], pos[1]) : max(_pos[1], pos[1]) + 1])
-                # cv2.waitKey(0)
-                # cv2.imshow('debuug', _img[min(_pos[0], pos[0]) : max(_pos[0], pos[0]) + 1, min(_pos[1], pos[1]) : max(_pos[1], pos[1]) + 1])
-                # cv2.waitKey(0)
                 try : 
                     self.img[min(_pos[1] - 1, pos[1] - 1, self.img.shape[0] - 1) : max(_pos[1], pos[1], 1) + 1, min(_pos[0] - 1, pos[0] - 1, self.img.shape[1] - 1) : max(_pos[0], pos[0], 1) + 1] = cv2.addWeighted(
                     self.img[min(_pos[1] - 1, pos[1] - 1, self.img.shape[0] - 1) : max(_pos[1], pos[1], 1) + 1, min(_pos[0] - 1, pos[0] - 1, self.img.shape[1] - 1) : max(_pos[0], pos[0], 1) + 1],
@@ -277,7 +315,6 @@ class Canvas :
 
             trail = self.trails[j]
             deleted = 0
-            # print(len(trail))
             trail[0].lifetime -= (t - self.last_update)
             for i in range(1, len(trail)) :
                 i -= deleted
@@ -286,12 +323,6 @@ class Canvas :
                 pos = coordinate(map(int, particle.pos))
                 _pos = coordinate(map(int, trail[i-1].pos))
                 cv2.line(_img, _pos, pos, Canvas.trail_color, 1)
-                # cv2.line(_img, _pos[ : : -1], pos[ : : -1], Canvas.trail_color, 1, cv2.LINE_AA)
-                # cv2.circle(_img, pos, 1, Canvas.trail_color, -1)
-                # cv2.imshow('debuug', self.img[min(_pos[0], pos[0]) : max(_pos[0], pos[0]) + 1, min(_pos[1], pos[1]) : max(_pos[1], pos[1]) + 1])
-                # cv2.waitKey(0)
-                # cv2.imshow('debuug', _img[min(_pos[0], pos[0]) : max(_pos[0], pos[0]) + 1, min(_pos[1], pos[1]) : max(_pos[1], pos[1]) + 1])
-                # cv2.waitKey(0)
                 try : 
                     self.img[min(_pos[1] - 1, pos[1] - 1, self.img.shape[0] - 1) : max(_pos[1], pos[1], 1) + 1, min(_pos[0] - 1, pos[0] - 1, self.img.shape[1] - 1) : max(_pos[0], pos[0], 1) + 1] = cv2.addWeighted(
                     self.img[min(_pos[1] - 1, pos[1] - 1, self.img.shape[0] - 1) : max(_pos[1], pos[1], 1) + 1, min(_pos[0] - 1, pos[0] - 1, self.img.shape[1] - 1) : max(_pos[0], pos[0], 1) + 1],
@@ -305,17 +336,14 @@ class Canvas :
 
         for bot in self.bots : 
             pos = coordinate(map(int, bot.predicted))
-            # cv2.rectangle(self.img, (pos - coordinate([2, 2]))[ : : -1], (pos + coordinate([2, 2]))[ : : -1], Canvas.bot_color, -1)
             cv2.circle(self.img, pos, 2, Canvas.prediction_color, -1, cv2.LINE_AA)
 
             pos = coordinate(map(int, bot.pos))
-            # cv2.rectangle(self.img, (pos - coordinate([2, 2]))[ : : -1], (pos + coordinate([2, 2]))[ : : -1], Canvas.bot_color, -1)
             cv2.rectangle(self.img, (pos - coordinate([2, 2])), (pos + coordinate([2, 2])), Canvas.bot_color, -1)
 
         self.trails = [bot.trail for bot in self.bots]
         self.predicted_trails = [bot.prediction_trail for bot in self.bots]
         
-        # _img = cv2.copyTo(self.img, np.ones(self.img.shape[ : -1]))
         for bot in self.bots : 
             deleted = 0
             for i in range(len(bot.trail)) : 
@@ -330,13 +358,10 @@ class Canvas :
                     del bot.prediction_trail[i]
                     deleted += 1
 
-        # self.img = _img
         cv2.imshow(SIM_WIN_NAME, self.upscale())
         cv2.waitKey(1)
     def upscale(self, scale_factor = 1.9) : 
-        # img = np.ones()
         img = cv2.resize(self.img, (0, 0), fx = scale_factor, fy = scale_factor, interpolation = cv2.INTER_NEAREST)
-        # img = self.base.copy()
 
         size, baseline = cv2.getTextSize(str(self.bots[0].distances), cv2.FONT_HERSHEY_SIMPLEX, 0.5, 2)
         cv2.putText(img, str(self.bots[0].distances), (0, size[1] + baseline), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (125, 100, 255), 2, cv2.LINE_AA)
