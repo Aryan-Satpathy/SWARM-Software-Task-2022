@@ -56,7 +56,7 @@ def main() :
     key = 0
 
     _iter = 0
-    while (key & 0xff) not in [27, 81, 113]: 
+    while (key & 0xff) not in [27, 81, 113]: # Escape, q, Q. Add more ASCII codes to add more keybinds to escape simulation
         
         _iter += 1
         _iter = _iter % 5

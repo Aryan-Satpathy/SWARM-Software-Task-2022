@@ -136,7 +136,7 @@ class Bot :
         self.prediction_trail = [Trail(self.predicted)] + self.prediction_trail
     def predict(self) : 
         try : 
-            self._predict([station.pos for station in Station.stations], self.distances)
+            self.predicted = self._predict([station.pos for station in Station.stations], self.distances)
         except (NotImplementedError, SignalsNotReady) :
             '''
             Placeholder prediction function
